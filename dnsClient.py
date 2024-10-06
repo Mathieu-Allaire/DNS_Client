@@ -62,7 +62,7 @@ def query_server(timeout, max_retries, port, server, query):
         try:
             send_time = time.time() # time before sending the query
             sock.sendto(query, (server, port))
-            response = sock.recvfrom(1024)
+            response, _ = sock.recvfrom(1024)
             recv_time = time.time() # time after receiving the response
             if response: 
                 return response, recv_time - send_time, retry_count
@@ -120,10 +120,12 @@ def parse_question(query_QNAME, query_QTYPE, query_QCLASS, response):
         QNAME.append(response[offset])
         offset += 1
         
-    offset += 1
+    offset += 1 # skip the 0 byte
     
     QTYPES = struct.unpack_from(">H", response, offset)[0]
     QCLASS = struct.unpack_from(">H", response, offset + 2)[0]
+    
+    offset += 4
     
     if query_QNAME != QNAME:
         print(f"Error    Unexpected response, the QNAME {QNAME} does not match the query QNAME {query_QNAME}")
@@ -132,20 +134,69 @@ def parse_question(query_QNAME, query_QTYPE, query_QCLASS, response):
     elif query_QCLASS != QCLASS:
         print(f"Error    Unexpected response, the QCLASS {QCLASS} does not match the query QCLASS {query_QCLASS}")
     
-    return QNAME, QTYPES, QCLASS
-                    
+    return QNAME, QTYPES, QCLASS, offset
+
+def parse_answer(response, offset, ANCOUNT):
+    answers = []
+    
+    for i in range(ANCOUNT):
+        NAME = []
+        if response[offset] & 0b11000000:
+            pointer = struct.unpack_from(">H", response, offset)[0] & 0b0011111111111111 # remove the first 2 bits and get the 14 bits representing the offset
+            while response[pointer] != 0:
+                NAME.append(response[pointer])
+                pointer += 1
+            offset += 2
+        else:
+            while response[offset] != 0:
+                NAME.append(response[offset])
+                offset += 1
+            offset += 1 # skip the 0 byte
+        
+        TYPE = struct.unpack_from(">H", response, offset)[0]
+        CLASS = struct.unpack_from(">H", response, offset + 2)[0]
+        TTL = struct.unpack_from(">I", response, offset + 4)[0]
+        RDLENGTH = struct.unpack_from(">H", response, offset + 8)[0]
+        RDATA = struct.unpack_from(">H", response, offset + 10)[0]
+        PREFERENCE = None
+        EXCHANGE = None
+        
+        record = (NAME, TYPE, CLASS, TTL, RDLENGTH, RDATA)
+        
+        if (TYPE == 1 and RDLENGTH != 4):
+            print(f"ERROR   Unexpected response, the RDLENGTH {RDLENGTH} does not match the expected length for an A record")
+        elif (TYPE == 2 and RDLENGTH != len(NAME)):
+            print(f"ERROR   Unexpected response, the RDLENGTH {RDLENGTH} does not match the expected length for an NS record")
+        elif (TYPE == 15):
+            PREFERENCE = struct.unpack_from(">H", response, offset + 10)[0]
+            EXCHANGE = []
+            if response[offset + 12] & 0b11000000:
+                pointer = struct.unpack_from(">H", response, offset + 12)[0] & 0b0011111111111111
+                while response[pointer] != 0:
+                    EXCHANGE.append(response[pointer])
+                    pointer += 1
+            else:
+                while response[offset + 12] != 0:
+                    EXCHANGE.append(response[offset + 12])
+                    offset += 1
+                offset += 1
+            record += (PREFERENCE, EXCHANGE)
+        
+        offset += 10 + RDLENGTH
+        answers.append(record)
+    
+    return answers
+          
 def parse_response(query_ID, query_RD, query_QNAME, query_QTYPE, query_QCLASS, response):
     ID, QR, OPCODE, AA, TC, RD, RA, Z, RCODE, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT = parse_header(query_ID, query_RD, response)
     
-    QNAME, QTYPES, QCLASS = parse_question(query_QNAME, query_QTYPE, query_QCLASS, response)
+    QNAME, QTYPES, QCLASS, offset = parse_question(query_QNAME, query_QTYPE, query_QCLASS, response)
+    
+    answers = parse_answer(response, offset, ANCOUNT)
     
     
     
 
-    
-    
-    
-    
 
 def main():
     # program arguments
@@ -195,7 +246,6 @@ def main():
     print(f"Request type: {query_type}")
     
     # create query
-    # Store ID, RD, and question for later use in parsing the response
     header, ID, RD = create_header()
     question, QNAME, QTYPE, QCLASS = create_question(name, query_type)
     query = header + question
