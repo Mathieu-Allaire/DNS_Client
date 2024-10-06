@@ -29,12 +29,15 @@ def create_header():
     
 def create_question(domaine_name, query_type):
     question = b''
+    QNAME = []
     domaine_name_list = domaine_name.split(".")
     
     for label in domaine_name_list:
         question += struct.pack(">B", len(label))
+        QNAME.append(len(label))
         for char in label:
-            question += char
+            question += char.encode('ascii')
+            QNAME.append(char.encode('ascii'))
     question += struct.pack(">B", 0) # end of domain name
     
     QTYPE = 1 # 16 bits, A record by default
@@ -46,7 +49,7 @@ def create_question(domaine_name, query_type):
         QTYPE = 2
     
     question += struct.pack(">HH", QTYPE, QCLASS) # 4 bytes
-    return question
+    return question, QNAME, QTYPE, QCLASS
         
     
 def query_server(timeout, max_retries, port, server, query):
@@ -97,24 +100,45 @@ def parse_header(query_ID, query_RD, response):
         print("Error    Unexpected response, the Z field is not zero")
     elif RCODE != 0:
         if RCODE == 1:
-            print("Error    Format error: the name server was unable to interpret the query")
+            print("Error    Unexpected response: the name server was unable to interpret the query")
         elif RCODE == 2:
-            print("Error    Server failure: the name server was unable to process the query")
+            print("Error    Unexpected response: the name server was unable to process the query")
         elif RCODE == 3:
-            print("Error    Name error: the domain name does not exist")
+            print("Error    Unexpected response: the domain name does not exist")
         elif RCODE == 4:
-            print("Error    Not implemented: the name server does not support the requested query")
+            print("Error    Unexpected response: the name server does not support the requested query")
         elif RCODE == 5:
-            print("Error    Refused: the name server refused to process the query")
+            print("Error    Unexpected response: the name server refused to process the query")
             
     return ID, QR, OPCODE, AA, TC, RD, RA, Z, RCODE, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT
-                 
-def parse_response(query_ID, query_RD, question, response):
+
+def parse_question(query_QNAME, query_QTYPE, query_QCLASS, response):
+    offset = 12 # start after the header (12 bytes)
+    QNAME = []
     
+    while response[offset] != 0:
+        QNAME.append(response[offset])
+        offset += 1
+    QTYPES = struct.unpack_from(">H", response, offset)[0]
+    QCLASS = struct.unpack_from(">H", response, offset + 2)[0]
+    
+    if query_QNAME != QNAME:
+        print(f"Error    Unexpected response, the QNAME {QNAME} does not match the query QNAME {query_QNAME}")
+    elif query_QTYPE != QTYPES:
+        print(f"Error    Unexpected response, the QTYPE {QTYPES} does not match the query QTYPE {query_QTYPE}")
+    elif query_QCLASS != QCLASS:
+        print(f"Error    Unexpected response, the QCLASS {QCLASS} does not match the query QCLASS {query_QCLASS}")
+    
+    return QNAME, QTYPES, QCLASS
+                    
+def parse_response(ID, RD, QNAME, QTYPE, QCLASS, response):
     ID, QR, OPCODE, AA, TC, RD, RA, Z, RCODE, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT = parse_header(query_ID, query_RD, response)
+    
+    QNAME, QTYPES, QCLASS = parse_question(query_QNAME, query_QTYPE, query_QCLASS, response)
     
     
 
+    
     
     
     
@@ -169,7 +193,7 @@ def main():
     # create query
     # Store ID, RD, and question for later use in parsing the response
     header, ID, RD = create_header()
-    question = create_question(name, query_type)
+    question, QNAME, QTYPE, QCLASS = create_question(name, query_type)
     query = header + question
     
     # send query to server
@@ -179,7 +203,7 @@ def main():
     
     
     # parse response
-    parse_response(ID, RD, question, response)
+    parse_response(ID, RD, QNAME, QTYPE, QCLASS, response)
 
               
 if __name__ == "__main__":
