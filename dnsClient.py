@@ -52,8 +52,24 @@ def create_question(domaine_name, query_type):
 def create_query(domaine_name, query_type):
     return create_header() + create_question(domaine_name, query_type)
     
-def query_server():
+def query_server(timeout, max_retries, port, server, query):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(timeout)
     
+    retry_count = 0
+    while retry_count < max_retries:
+        try:
+            sock.sendto(query, (server, port))
+            response = sock.recvfrom(1024)
+            if response:
+                return response
+
+        except socket.timeout:
+            retry_count += 1
+        
+    print(f"ERROR    Maximum number of retries {max_retries} exceeded")
+    return None
+        
 def parse_response():
     
     
@@ -101,7 +117,7 @@ def main():
         exit(1)
      
     query = create_query(name, query_type)
-    response = query_server()
+    response = query_server(timeout, max_retries, port, server, query)
 
               
 if __name__ == "__main__":
