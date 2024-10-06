@@ -215,17 +215,15 @@ def print_response(AA, COUNT, data, section_name):
             exchange = get_readable_domaine_name(record[6])
             print(f"MX  {exchange}  {preference}    {TTL}   {auth}")
 
-def get_readable_domaine_name(raw_bytes):
-    """ Convert raw DNS response bytes into a readable domain name """
+def get_readable_domaine_name(data):
     name = []
-    i = 0
-    while i < len(raw_bytes):
-        length = raw_bytes[i]
-        i += 1
-        if length == 0:
+    offset = 0
+    while offset < len(data):
+        label_size = data[offset]
+        if label_size == 0:
             break
-        name.append(''.join(chr(b) for b in raw_bytes[i:i + length]))
-        i += length
+        name.append(data[offset + 1:offset + 1 + label_size].decode('ascii'))
+        offset += label_size + 1
     return '.'.join(name)
           
 def parse_response(query_ID, query_RD, query_QNAME, query_QTYPE, query_QCLASS, response):
