@@ -71,7 +71,7 @@ def query_server(timeout, max_retries, port, server, query):
     return None
         
 def parse_response():
-    
+    return 1
     
 
 def main():
@@ -84,7 +84,8 @@ def main():
     name = "" # domain name
     args = sys.argv[1:]
     
-    while (i = 0 < len(args)):
+    i = 0
+    while (i < len(args)):
         if args[i] == "-t":
             timeout = int(args[i+1])
             i += 2
