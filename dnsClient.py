@@ -187,8 +187,36 @@ def parse_answer(response, offset, COUNT):
     
     return answers, offset
 
-def print_response(ID, QR, OPCODE, AA, TC, RD, RA, Z, RCODE, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT, QNAME, QTYPES, QCLASS, answers, authorities, additionals):
-    return 1
+def print_response(AA, COUNT, data, section_name):
+    print(f"*** {section_name} Section ({COUNT} records) ***")
+    
+    for record in data:
+        NAME, TYPE, CLASS, TTL, RDLENGTH, RDATA = record[:6]
+        auth = "auth" if AA else "nonauth"
+        
+        # A record
+        if TYPE == 1:
+            ip_address = ".".join(map(str, RDATA))
+            print(f"IP  {ip_address}    {TTL}   {auth}")
+                
+        # NS Record
+        elif TYPE == 2:
+            name_server = get_readable_domaine_name(RDATA)
+            print(f"NS  {name_server}   {TTL}   {auth}")
+            
+        # CNAME record
+        elif TYPE == 5:
+            alias = get_readable_domaine_name(RDATA)
+            print(f"CNAME   {alias} {TTL}   {auth}")
+        
+        # MX record
+        elif TYPE == 15:
+            preference = record[5]
+            exchange = get_readable_domaine_name(record[6])
+            print(f"MX  {exchange}  {preference}    {TTL}   {auth}")
+
+def get_readable_domaine_name(domaine_name)
+    #todo implement this function
           
 def parse_response(query_ID, query_RD, query_QNAME, query_QTYPE, query_QCLASS, response):
     ID, QR, OPCODE, AA, TC, RD, RA, Z, RCODE, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT = parse_header(query_ID, query_RD, response)
@@ -201,7 +229,8 @@ def parse_response(query_ID, query_RD, query_QNAME, query_QTYPE, query_QCLASS, r
     
     additionals, offset_additionals = parse_answer(response, offset_authorities, ARCOUNT) # reuse the parse_answer function to parse the additionals
     
-    print_response(ID, QR, OPCODE, AA, TC, RD, RA, Z, RCODE, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT, QNAME, QTYPES, QCLASS, answers, authorities, additionals)
+    print_response(AA, ANCOUNT, answers, "Answer")
+    print_response(AA, ARCOUNT, additionals, "Additional")
     
 
 def main():
