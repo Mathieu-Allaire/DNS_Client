@@ -37,7 +37,7 @@ def create_question(domaine_name, query_type):
         QNAME.append(len(label))
         for char in label:
             question += char.encode('ascii')
-            QNAME.append(char.encode('ascii'))
+            QNAME.append(ord(char))
     question += struct.pack(">B", 0) # end of domain name
     
     QTYPE = 1 # 16 bits, A record by default
@@ -74,9 +74,9 @@ def query_server(timeout, max_retries, port, server, query):
 
 def parse_header(query_ID, query_RD, response):
     
-    ID, flags, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT = struct.unpack(">HHHHHH", header)
+    ID, flags, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT = struct.unpack(">HHHHHH", response[:12])
     
-    if ID != query_id:
+    if ID != query_ID:
         print(f"Error    Unexpected response, the response ID {ID} does not match the query ID {query_ID}")
     
     QR = (flags >> 15) & 0b1
@@ -119,6 +119,9 @@ def parse_question(query_QNAME, query_QTYPE, query_QCLASS, response):
     while response[offset] != 0:
         QNAME.append(response[offset])
         offset += 1
+        
+    offset += 1
+    
     QTYPES = struct.unpack_from(">H", response, offset)[0]
     QCLASS = struct.unpack_from(">H", response, offset + 2)[0]
     
@@ -131,10 +134,11 @@ def parse_question(query_QNAME, query_QTYPE, query_QCLASS, response):
     
     return QNAME, QTYPES, QCLASS
                     
-def parse_response(ID, RD, QNAME, QTYPE, QCLASS, response):
+def parse_response(query_ID, query_RD, query_QNAME, query_QTYPE, query_QCLASS, response):
     ID, QR, OPCODE, AA, TC, RD, RA, Z, RCODE, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT = parse_header(query_ID, query_RD, response)
     
     QNAME, QTYPES, QCLASS = parse_question(query_QNAME, query_QTYPE, query_QCLASS, response)
+    
     
     
 
