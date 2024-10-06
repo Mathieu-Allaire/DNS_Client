@@ -186,6 +186,9 @@ def parse_answer(response, offset, COUNT):
         answers.append(record)
     
     return answers, offset
+
+print_response(ID, QR, OPCODE, AA, TC, RD, RA, Z, RCODE, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT, QNAME, QTYPES, QCLASS, answers, authorities, additionals):
+    
           
 def parse_response(query_ID, query_RD, query_QNAME, query_QTYPE, query_QCLASS, response):
     ID, QR, OPCODE, AA, TC, RD, RA, Z, RCODE, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT = parse_header(query_ID, query_RD, response)
@@ -197,6 +200,8 @@ def parse_response(query_ID, query_RD, query_QNAME, query_QTYPE, query_QCLASS, r
     authorities, offset_authorities parse_answer(response, offset_answer, NSCOUNT) # reuse the parse_answer function to parse the authorities
     
     additionals, offset_additionals = parse_answer(response, offset_authorities, ARCOUNT) # reuse the parse_answer function to parse the additionals
+    
+    print_response(ID, QR, OPCODE, AA, TC, RD, RA, Z, RCODE, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT, QNAME, QTYPES, QCLASS, answers, authorities, additionals)
     
 
 def main():
