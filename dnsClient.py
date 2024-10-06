@@ -25,7 +25,7 @@ def create_header():
     ARCOUNT = 0 # 16 bits
     
     header = struct.pack(">HHHHHH", ID, flags, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT) # 12 bytes
-    return header
+    return header, ID
     
 def create_question(domaine_name, query_type):
     question = b''
@@ -37,8 +37,8 @@ def create_question(domaine_name, query_type):
             question += char
     question += struct.pack(">B", 0) # end of domain name
     
-    QTYPE = 1
-    QCLASS = 1
+    QTYPE = 1 # 16 bits, A record by default
+    QCLASS = 1 # 16 bits, IN class by default
     
     if query_type == "-mx":
         QTYPE = 15
@@ -63,8 +63,7 @@ def query_server(timeout, max_retries, port, server, query):
             response = sock.recvfrom(1024)
             if response:
                 return response
-
-        except socket.timeout:
+        except:
             retry_count += 1
         
     print(f"ERROR    Maximum number of retries {max_retries} exceeded")
@@ -79,9 +78,9 @@ def main():
     timeout  = 5 # default value
     max_retries = 3 # default value
     port = 53 # default value
-    query_type = "" # -mx or -ns
-    server = "" # dns server
-    name = "" # domain name
+    query_type = "A" # default A, other values: MX, NS
+    server = None # dns server
+    name = None # domain name
     args = sys.argv[1:]
     
     i = 0
@@ -102,8 +101,8 @@ def main():
             query_type = "-ns"
             i += 1
         elif args[i].startwith("@"):
-            server = args[i][1:]
-            name = args[i+1]
+            server = args[i][1:] # remove the @ symbol, keep the server IP address
+            name = args[i+1] # domain name
             i += 2
             
             if (i < len(args)):
@@ -116,9 +115,14 @@ def main():
     if (server is None or name is None):
         print("ERROR    Incorrect input syntax: server name and domain name must be specified")
         exit(1)
-     
-    query = create_query(name, query_type)
+    
+    print(f"DnsClient sending request for {name}")
+    print(f"Server: {server}")
+    print(f"Request type: {query_type}")
+    
+    query, query_id = create_query(name, query_type)
     response = query_server(timeout, max_retries, port, server, query)
+    parse_response(query_id, response)
 
               
 if __name__ == "__main__":
