@@ -136,10 +136,10 @@ def parse_question(query_QNAME, query_QTYPE, query_QCLASS, response):
     
     return QNAME, QTYPES, QCLASS, offset
 
-def parse_answer(response, offset, ANCOUNT):
+def parse_answer(response, offset, COUNT):
     answers = []
     
-    for i in range(ANCOUNT):
+    for i in range(COUNT):
         NAME = []
         if response[offset] & 0b11000000:
             pointer = struct.unpack_from(">H", response, offset)[0] & 0b0011111111111111 # remove the first 2 bits and get the 14 bits representing the offset
@@ -157,7 +157,7 @@ def parse_answer(response, offset, ANCOUNT):
         CLASS = struct.unpack_from(">H", response, offset + 2)[0]
         TTL = struct.unpack_from(">I", response, offset + 4)[0]
         RDLENGTH = struct.unpack_from(">H", response, offset + 8)[0]
-        RDATA = struct.unpack_from(">H", response, offset + 10)[0]
+        RDATA = response[offset + 10: offset + 10 + RDLENGTH]
         PREFERENCE = None
         EXCHANGE = None
         
@@ -165,38 +165,39 @@ def parse_answer(response, offset, ANCOUNT):
         
         if (TYPE == 1 and RDLENGTH != 4):
             print(f"ERROR   Unexpected response, the RDLENGTH {RDLENGTH} does not match the expected length for an A record")
-        elif (TYPE == 2 and RDLENGTH != len(NAME)):
-            print(f"ERROR   Unexpected response, the RDLENGTH {RDLENGTH} does not match the expected length for an NS record")
         elif (TYPE == 15):
             PREFERENCE = struct.unpack_from(">H", response, offset + 10)[0]
             EXCHANGE = []
-            if response[offset + 12] & 0b11000000:
-                pointer = struct.unpack_from(">H", response, offset + 12)[0] & 0b0011111111111111
+            exchange_offset  = offset + 12
+            if response[exchange_offset] & 0b11000000:
+                pointer = struct.unpack_from(">H", response, exchange_offset)[0] & 0b0011111111111111
                 while response[pointer] != 0:
                     EXCHANGE.append(response[pointer])
                     pointer += 1
             else:
-                while response[offset + 12] != 0:
-                    EXCHANGE.append(response[offset + 12])
-                    offset += 1
-                offset += 1
+                while response[exchange_offset] != 0:
+                    EXCHANGE.append(response[exchange_offset])
+                    exchange_offset += 1
+                exchange_offset += 1
+                    
             record += (PREFERENCE, EXCHANGE)
         
         offset += 10 + RDLENGTH
         answers.append(record)
     
-    return answers
+    return answers, offset
           
 def parse_response(query_ID, query_RD, query_QNAME, query_QTYPE, query_QCLASS, response):
     ID, QR, OPCODE, AA, TC, RD, RA, Z, RCODE, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT = parse_header(query_ID, query_RD, response)
     
-    QNAME, QTYPES, QCLASS, offset = parse_question(query_QNAME, query_QTYPE, query_QCLASS, response)
+    QNAME, QTYPES, QCLASS, offset_question = parse_question(query_QNAME, query_QTYPE, query_QCLASS, response)
     
-    answers = parse_answer(response, offset, ANCOUNT)
+    answers, offset_answer = parse_answer(response, offset_question, ANCOUNT)
     
+    authorities, offset_authorities parse_answer(response, offset_answer, NSCOUNT) # reuse the parse_answer function to parse the authorities
     
+    additionals, offset_additionals = parse_answer(response, offset_authorities, ARCOUNT) # reuse the parse_answer function to parse the additionals
     
-
 
 def main():
     # program arguments
