@@ -94,7 +94,7 @@ def parse_header(query_ID, query_RD, response):
         print("Error    Unexpected response, the OPCODE does not correspond to a standard query")
     elif TC != 0:
         print("Error    Unexpected response, message is truncated")
-    elif RD != query_rd:
+    elif RD != query_RD:
         print(f"Error    Unexpected response, the RD flag {RD} does not match the query RD flag {query_RD}")
     elif Z != 0:
         print("Error    Unexpected response, the Z field is not zero")
@@ -215,8 +215,18 @@ def print_response(AA, COUNT, data, section_name):
             exchange = get_readable_domaine_name(record[6])
             print(f"MX  {exchange}  {preference}    {TTL}   {auth}")
 
-def get_readable_domaine_name(domaine_name)
-    #todo implement this function
+def get_readable_domaine_name(raw_bytes):
+    """ Convert raw DNS response bytes into a readable domain name """
+    name = []
+    i = 0
+    while i < len(raw_bytes):
+        length = raw_bytes[i]
+        i += 1
+        if length == 0:
+            break
+        name.append(''.join(chr(b) for b in raw_bytes[i:i + length]))
+        i += length
+    return '.'.join(name)
           
 def parse_response(query_ID, query_RD, query_QNAME, query_QTYPE, query_QCLASS, response):
     ID, QR, OPCODE, AA, TC, RD, RA, Z, RCODE, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT = parse_header(query_ID, query_RD, response)
@@ -260,7 +270,7 @@ def main():
         elif args[i] == "-ns":
             query_type = "-ns"
             i += 1
-        elif args[i].startwith("@"):
+        elif args[i][0] == "@":
             server = args[i][1:] # remove the @ symbol, keep the server IP address
             name = args[i+1] # domain name
             i += 2
