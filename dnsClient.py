@@ -1,5 +1,4 @@
 import sys
-import string
 import struct
 import socket
 import time
@@ -11,28 +10,28 @@ class QueryConstructor:
         self.name = domaine_name
         self.query_type = query_type
         self.ID = None
-        self.QR = None
-        QNAME = None
-        QTYPE = None
-        QCLASS = None
+        self.RD = None
+        self.QNAME = None
+        self.QTYPE = None
+        self.QCLASS = None
         
     def create_header(self):
-        self.ID = random.randint(0, 65535) # Generate a random 16-bit number for the ID field
+        self.ID = random.randint(0, (1 << 16) - 1) # Generate a random 16-bit number for the ID field
         
-        self.QR = 0b0 # 1 bit
-        OPCODE = 0b0 # 4 bits
+        QR = 0b0 # 1 bit
+        OPCODE = 0b0000 # 4 bits
         AA = 0b0 # 1 bit
         TC = 0b0 # 1 bit
-        RD = 0b1 # 1 bit
+        self.RD = 0b1 # 1 bit
         RA = 0b0 # 1 bit
-        Z = 0b0 # 3 bits
-        RCODE = 0b0 # 4 bits
-        flags = (self.QR << 15) | (OPCODE << 11) | (AA << 10) | (TC << 9) | (RD << 8) | (RA << 7) | (Z << 4) | RCODE # 16 bits
+        Z = 0b000 # 3 bits
+        RCODE = 0b0000 # 4 bits
+        flags = (QR << 15) | (OPCODE << 11) | (AA << 10) | (TC << 9) | (self.RD << 8) | (RA << 7) | (Z << 4) | RCODE # 16 bits
         
-        QDCOUNT = 0b1 # 16 bits
-        ANCOUNT = 0b0 # 16 bits
-        NSCOUNT = 0b0 # 16 bits
-        ARCOUNT = 0b0 # 16 bits
+        QDCOUNT = 0b0000000000000001 # 16 bits
+        ANCOUNT = 0b0000000000000000 # 16 bits
+        NSCOUNT = 0b0000000000000000 # 16 bits
+        ARCOUNT = 0b0000000000000000 # 16 bits
         
         header = b''
         header += struct.pack(">HHHHHH", self.ID, flags, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT)
@@ -40,21 +39,18 @@ class QueryConstructor:
         return header
     
     def create_question(self, domaine_name, query_type):
+        self.QNAME = domaine_name
         domaine_name_list = domaine_name.split(".")
         question = b''
-        QNAME = []
         
         for label in domaine_name_list:
             question += struct.pack(">B", len(label))
-            QNAME.append(len(label))
             for char in label:
                 question += char.encode('ascii')
-                QNAME.append(char.encode('ascii'))
         question += struct.pack(">B", 0) # end of domain name
         
-        self.QNAME = QNAME
-        self.QTYPE = 15 if query_type == "-mx" else 2 if query_type == "-ns" else 1  # 16 bits
-        self.QCLASS = 1 # 16 bits
+        self.QTYPE = 0b0000000000001111 if query_type == "-mx" else 0b0000000000000010 if query_type == "-ns" else 0b0000000000000001 # 16 bits
+        self.QCLASS = 0b0000000000000001 # 16 bits
         
         question += struct.pack(">HH", self.QTYPE, self.QCLASS)
         
@@ -67,203 +63,201 @@ class QueryConstructor:
     
 class QueryHandler:
     
-    def send_query(self, timeout, max_retries, port, server, query):
+    def __init__(self):
+        self.AA = None
+        self.QDCOUNT = None
+        self.ANCOUNT = None
+        self.NSCOUNT = None
+        self.ARCOUNT = None
+        self.answers = None
+        self.authorities = None
+        self.additionals = None
+    
+    def query_server(self, timeout, max_retries, port, server, query):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(timeout)
         
-    
-    
-    
-    
-    
-    
-def query_server(timeout, max_retries, port, server, query):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(timeout)
-    
-    
-    retry_count = 0
-    while retry_count < max_retries:
-        try:
-            send_time = time.time() # time before sending the query
-            sock.sendto(query, (server, port))
-            response, _ = sock.recvfrom(1024)
-            recv_time = time.time() # time after receiving the response
-            if response: 
-                return response, recv_time - send_time, retry_count
-        except:
-            retry_count += 1
-        
-    print(f"ERROR    Maximum number of retries {max_retries} exceeded")
-    return None
-
-def parse_header(query_ID, query_RD, response):
-    
-    ID, flags, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT = struct.unpack(">HHHHHH", response[:12]) # TODO: NOT TO USE UNPACK
-    
-    if ID != query_ID:
-        print(f"Error    Unexpected response, the response ID {ID} does not match the query ID {query_ID}")
-    
-    QR = (flags >> 15) & 0b1
-    OPCODE = (flags >> 11) & 0b1111
-    AA = (flags >> 10) & 0b1
-    TC = (flags >> 9) & 0b1
-    RD = (flags >> 8) & 0b1
-    RA = (flags >> 7) & 0b1
-    Z = (flags >> 4) & 0b111
-    RCODE = flags & 0b1111
-    
-    if QR != 1:
-        print("Error    Unexpected response, the QR bit does not correspond to a response message")
-    elif OPCODE != 0:
-        print("Error    Unexpected response, the OPCODE does not correspond to a standard query")
-    elif TC != 0:
-        print("Error    Unexpected response, message is truncated")
-    elif RD != query_RD:
-        print(f"Error    Unexpected response, the RD flag {RD} does not match the query RD flag {query_RD}")
-    elif Z != 0:
-        print("Error    Unexpected response, the Z field is not zero")
-    elif RCODE != 0:
-        if RCODE == 1:
-            print("Error    Unexpected response: the name server was unable to interpret the query")
-        elif RCODE == 2:
-            print("Error    Unexpected response: the name server was unable to process the query")
-        elif RCODE == 3:
-            print("Error    Unexpected response: the domain name does not exist")
-        elif RCODE == 4:
-            print("Error    Unexpected response: the name server does not support the requested query")
-        elif RCODE == 5:
-            print("Error    Unexpected response: the name server refused to process the query")
+        retry_count = 0
+        while retry_count < max_retries:
+            try:
+                send_time = time.time() # time before sending the query
+                sock.sendto(query, (server, port))
+                response, _ = sock.recvfrom(1024)
+                recv_time = time.time() # time after receiving the response
+                if response:
+                    sock.close()
+                    return response, recv_time - send_time, retry_count
+                else:
+                    retry_count += 1
+            except:
+                retry_count += 1
             
-    return ID, QR, OPCODE, AA, TC, RD, RA, Z, RCODE, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT
-
-def parse_question(query_QNAME, query_QTYPE, query_QCLASS, response):
-    offset = 12 # start after the header (12 bytes)
-    QNAME = [] 
+        print(f"ERROR    Maximum number of retries {max_retries} exceeded")
+        sock.close()
+        return None
     
-    while response[offset] != 0:
-        QNAME.append(response[offset])
-        offset += 1
+    def parse_header(self, query_ID, query_RD, response):
+        ID = (response[0] << 8) | response[1] 
+        flags = (response[2] << 8) | response[3]
+        self.QDCOUNT = (response[4] << 8) | response[5]
+        self.ANCOUNT = (response[6] << 8) | response[7]
+        self.NSCOUNT = (response[8] << 8) | response[9]
+        self.ARCOUNT = (response[10] << 8) | response[11]
         
-    offset += 1 # skip the 0 byte
-    
-    QTYPES = struct.unpack_from(">H", response, offset)[0] #todo do not use unpack
-    QCLASS = struct.unpack_from(">H", response, offset + 2)[0] # todo do not use unpack
-    
-    offset += 4
-    
-    if query_QNAME != QNAME:
-        print(f"Error    Unexpected response, the QNAME {QNAME} does not match the query QNAME {query_QNAME}")
-    elif query_QTYPE != QTYPES:
-        print(f"Error    Unexpected response, the QTYPE {QTYPES} does not match the query QTYPE {query_QTYPE}")
-    elif query_QCLASS != QCLASS:
-        print(f"Error    Unexpected response, the QCLASS {QCLASS} does not match the query QCLASS {query_QCLASS}")
-    
-    return QNAME, QTYPES, QCLASS, offset
-
-def parse_answer(response, offset, COUNT):
-    answers = []
-    
-    for i in range(COUNT):
-        NAME = []
-        if response[offset] & 0b11000000:
-            pointer = struct.unpack_from(">H", response, offset)[0] & 0b0011111111111111 # remove the first 2 bits and get the 14 bits representing the offset
-            while response[pointer] != 0:
-                NAME.append(response[pointer])
-                pointer += 1
-            offset += 2
-        else:
-            while response[offset] != 0:
-                NAME.append(response[offset])
-                offset += 1
-            offset += 1 # skip the 0 byte
+        if ID != query_ID:
+            print(f"Error    Unexpected response, the response ID {ID} does not match the query ID {query_ID}")
+          
+        QR = (flags >> 15) & 0b1
+        OPCODE = (flags >> 11) & 0b1111
+        self.AA = (flags >> 10) & 0b1
+        TC = (flags >> 9) & 0b1
+        RD = (flags >> 8) & 0b1
+        RA = (flags >> 7) & 0b1
+        Z = (flags >> 4) & 0b111
+        RCODE = flags & 0b1111
         
-        TYPE = struct.unpack_from(">H", response, offset)[0]
-        CLASS = struct.unpack_from(">H", response, offset + 2)[0]
-        TTL = struct.unpack_from(">I", response, offset + 4)[0]
-        RDLENGTH = struct.unpack_from(">H", response, offset + 8)[0]
-        RDATA = response[offset + 10: offset + 10 + RDLENGTH]
-        PREFERENCE = None
-        EXCHANGE = None
-        
-        record = (NAME, TYPE, CLASS, TTL, RDLENGTH, RDATA)
-        
-        if (TYPE == 1 and RDLENGTH != 4):
-            print(f"ERROR   Unexpected response, the RDLENGTH {RDLENGTH} does not match the expected length for an A record")
-        elif (TYPE == 15):
-            PREFERENCE = struct.unpack_from(">H", response, offset + 10)[0]
-            EXCHANGE = [] 
-            exchange_offset  = offset + 12
-            if response[exchange_offset] & 0b11000000:
-                pointer = struct.unpack_from(">H", response, exchange_offset)[0] & 0b0011111111111111
-                while response[pointer] != 0:
-                    EXCHANGE.append(response[pointer])
-                    pointer += 1
-            else:
-                while response[exchange_offset] != 0:
-                    EXCHANGE.append(response[exchange_offset])
-                    exchange_offset += 1
-                exchange_offset += 1
-                    
-            record += (PREFERENCE, EXCHANGE)
-        
-        offset += 10 + RDLENGTH
-        answers.append(record)
-    
-    return answers, offset
-
-def print_response(AA, COUNT, data, section_name):
-    print(f"*** {section_name} Section ({COUNT} records) ***")
-    
-    for record in data:
-        NAME, TYPE, CLASS, TTL, RDLENGTH, RDATA = record[:6]
-        auth = "auth" if AA else "nonauth"
-        
-        # A record
-        if TYPE == 1:
-            ip_address = ".".join(map(str, RDATA))
-            print(f"IP\t{ip_address}\t{TTL}\t{auth}")
+        if QR != 1:
+            print("Error    Unexpected response, the QR bit does not correspond to a response message")
+        elif OPCODE != 0:
+            print("Error    Unexpected response, the OPCODE does not correspond to a standard query")
+        elif TC != 0:
+            print("Error    Unexpected response, message is truncated")
+        elif RD != query_RD:
+            print(f"Error    Unexpected response, the RD flag {RD} does not match the query RD flag {query_RD}")
+        elif Z != 0:
+            print("Error    Unexpected response, the Z field is not zero")
+        elif RCODE != 0:
+            if RCODE == 1:
+                print("Error    Unexpected response: the name server was unable to interpret the query")
+            elif RCODE == 2:
+                print("Error    Unexpected response: the name server was unable to process the query")
+            elif RCODE == 3:
+                print("Error    Unexpected response: the domain name does not exist")
+            elif RCODE == 4:
+                print("Error    Unexpected response: the name server does not support the requested query")
+            elif RCODE == 5:
+                print("Error    Unexpected response: the name server refused to process the query")
                 
-        # NS Record
-        elif TYPE == 2:
-            name_server = get_readable_domaine_name(RDATA)
-            print(f"NS\t{name_server}\t{TTL}\t{auth}")
-            
-        # CNAME record
-        elif TYPE == 5:
-            alias = get_readable_domaine_name(RDATA)
-            print(f"CNAME\t{alias}\t{TTL}\t{auth}")
+    def parse_question(self, query_QNAME, query_QTYPE, query_QCLASS, response):
+        offset = 12 # start after the header (12 bytes)
+        QNAME = []
         
-        # MX record
-        elif TYPE == 15:
-            preference = record[5]
-            exchange = record[6]
-            print(f"MX  {exchange}  {preference}    {TTL}   {auth}")
+        while response[offset] != 0b0:
+            QNAME.append(response[offset])
+            offset += 1
+            
+        offset += 1 # skip the 0 byte
+        
+        QNAME = ascii_to_readable(QNAME)
+        
+        QTYPES = response[offset] << 8 | response[offset + 1] # 16 bits
+        QCLASS = response[offset + 2] << 8 | response[offset + 3]
+        
+        offset += 4
+        
+        if query_QNAME != QNAME:
+            print(f"Error  fwehfieuwfviewyfeiewuifgwei  Unexpected response, the QNAME {QNAME} does not match the query QNAME {query_QNAME}")
+        elif query_QTYPE != QTYPES:
+            print(f"Error    Unexpected response, the QTYPE {QTYPES} does not match the query QTYPE {query_QTYPE}")
+        elif query_QCLASS != QCLASS:
+            print(f"Error    Unexpected response, the QCLASS {QCLASS} does not match the query QCLASS {query_QCLASS}")
+        
+        return offset
+    
+    def parse_answer(self, COUNT, offset, response):
+        answers = []
+        
+        for i in range(COUNT):
+            NAME = []
+            if (response[offset] & 0b11000000) == 0b11000000:
+                address = ((response[offset] & 0b00111111) << 8) | response[offset + 1] #remove the first 2 bits and get the 14 bits representing the offset
+                while response[address] != 0b0:
+                    NAME.append(response[address])
+                    address += 1
+                offset += 2 # skip the 2 bytes
+            else:
+                while response[offset] != 0b0:
+                    NAME.append(response[offset])
+                    offset += 1
+                offset += 1 # skip the 0 byte
+                
+            NAME = ascii_to_readable(NAME)
+                
+            TYPE = (response[offset] << 8) | response[offset + 1] # 16 bits
+            CLASS = (response[offset + 2] << 8) | response[offset + 3]
+            TTL = (response[offset + 4] << 24) | (response[offset + 5] << 16) | (response[offset + 6] << 8) | response[offset + 7]
+            RDLENGTH = (response[offset + 8] << 8) | response[offset + 9]
+            RDATA = response[offset + 10: offset + 10 + RDLENGTH]
+            record = (NAME, TYPE, CLASS, TTL, RDLENGTH, RDATA)
+            
+            offset += 10
+            
+            if (TYPE == 0b1 and RDLENGTH != 4):
+                print(f"ERROR   Unexpected response, the RDLENGTH {RDLENGTH} does not match the expected length for an A record")
+            elif (TYPE == 0b1111):
+                PREFERENCE = response[offset] << 8 | response[offset + 1]
+                offset += 2
+                
+                EXCHANGE = []
+                while response[offset] != 0b0:
+                    EXCHANGE.append(response[offset])
+                    offset += 1
+                offset += 1
+                
+                EXCHANGE = ascii_to_readable(EXCHANGE)       
+                record += (PREFERENCE, EXCHANGE)
+                
+            answers.append(record)
+            
+        return answers, offset
+    
+    def display_response(self, AA, COUNT, data, section_name):
+        print(f"*** {section_name} Section ({COUNT} records) ***")
+        for record in data:
+            NAME, TYPE, CLASS, TTL, RDLENGTH, RDATA = record[:6]
+            auth = "auth" if AA else "nonauth"
+            
+            # A record
+            if TYPE == 0b1:
+                print(f"IP\t{'.'.join(map(str, RDATA))}\t{TTL}\t{auth}")
 
-def get_readable_domaine_name(data):
+            # NS Record
+            elif TYPE == 0b10:
+                print(f"NS\t{RDATA}\t{TTL}\t{auth}")
+                
+            # CNAME record
+            elif TYPE == 0b101:
+                print(f"CNAME\t{RDATA}\t{TTL}\t{auth}")
+                
+            # MX record
+            elif TYPE == 0b1111:
+                print(f"MX\t{record[7]}\t{record[6]}\t{TTL}\t{auth}")
+            
+            
+        
+    def process_response(self, query_ID, query_RD, query_QNAME, query_QTYPE, query_QCLASS, response):
+        self.parse_header(query_ID, query_RD, response)
+        offset = self.parse_question(query_QNAME, query_QTYPE, query_QCLASS, response)
+        self.answers, offset = self.parse_answer(self.ANCOUNT, offset, response)
+        self.authorities, offset = self.parse_answer(self.NSCOUNT, offset, response)
+        self.additionals, offset = self.parse_answer(self.ARCOUNT, offset, response)
+        
+        self.display_response(self.AA, self.ANCOUNT, self.answers, "Answer")
+        self.display_response(self.AA, self.ARCOUNT, self.additionals, "Additional")
+        
+def ascii_to_readable(data):
     name = []
     offset = 0
     while offset < len(data):
         label_size = data[offset]
-        if label_size == 0:
-            break
-        name.append(data[offset + 1:offset + 1 + label_size].decode('ascii'))
+        for i in range(label_size):
+            name.append(chr(data[offset + 1 + i]))
+        name.append('.')
         offset += label_size + 1
-    return '.'.join(name)
-          
-def parse_response(query_ID, query_RD, query_QNAME, query_QTYPE, query_QCLASS, response):
-    ID, QR, OPCODE, AA, TC, RD, RA, Z, RCODE, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT = parse_header(query_ID, query_RD, response)
     
-    QNAME, QTYPES, QCLASS, offset_question = parse_question(query_QNAME, query_QTYPE, query_QCLASS, response)
+    name.pop() # remove the last dot
     
-    answers, offset_answer = parse_answer(response, offset_question, ANCOUNT)
-    
-    authorities, offset_authorities = parse_answer(response, offset_answer, NSCOUNT) # reuse the parse_answer function to parse the authorities
-    
-    additionals, offset_additionals = parse_answer(response, offset_authorities, ARCOUNT) # reuse the parse_answer function to parse the additionals
-    
-    print_response(AA, ANCOUNT, answers, "Answer")
-    
-    print_response(AA, ARCOUNT, additionals, "Additional")
-    
+    return ''.join(name)
 
 def main():
     # program arguments
@@ -313,13 +307,11 @@ def main():
     dnsQuery = queryConstructor.create_query()
     
     queryHandler = QueryHandler()
-    response, elapsed_time, retry_count = queryHandler.send_query(timeout, max_retries, port, server, dnsQuery)
+    response, elapsed_time, retry_count = queryHandler.query_server(timeout, max_retries, port, server, dnsQuery)
     
     print(f"Response received after {elapsed_time} seconds ({retry_count} retries)")
     
     queryHandler.process_response(queryConstructor.ID, queryConstructor.RD, queryConstructor.QNAME, queryConstructor.QTYPE, queryConstructor.QCLASS, response)
-
-
               
 if __name__ == "__main__":
     main()
