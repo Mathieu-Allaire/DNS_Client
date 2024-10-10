@@ -246,18 +246,16 @@ class QueryHandler:
         self.display_response(self.AA, self.ARCOUNT, self.additionals, "Additional")
         
 def ascii_to_readable(data):
-    name = []
+    name = ""
     offset = 0
     while offset < len(data):
         label_size = data[offset]
         for i in range(label_size):
-            name.append(chr(data[offset + 1 + i]))
-        name.append('.')
+            name += chr(data[offset + 1 + i])
+        name += "."
         offset += label_size + 1
     
-    name.pop() # remove the last dot
-    
-    return ''.join(name)
+    return name[:-1] # remove the last dot
 
 def main():
     # program arguments
