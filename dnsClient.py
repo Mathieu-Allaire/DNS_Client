@@ -140,18 +140,10 @@ class QueryHandler:
                 
     def parse_question(self, query_QNAME, query_QTYPE, query_QCLASS, response):
         offset = 12 # start after the header (12 bytes)
-        QNAME = []
-        
-        while response[offset] != 0b0:
-            QNAME.append(response[offset])
-            offset += 1
-            
-        offset += 1 # skip the 0 byte
-        
-        QNAME = ascii_to_readable(QNAME)
-        
+    
+        QNAME, offset = self.decode_name(response, offset)    
         QTYPES = response[offset] << 8 | response[offset + 1] # 16 bits
-        QCLASS = response[offset + 2] << 8 | response[offset + 3]
+        QCLASS = response[offset + 2] << 8 | response[offset + 3] # 16 bits
         
         offset += 4
         
@@ -166,51 +158,67 @@ class QueryHandler:
     
     def parse_answer(self, COUNT, offset, response):
         answers = []
-        
+
         for i in range(COUNT):
-            NAME = []
-            if (response[offset] & 0b11000000) == 0b11000000:
-                address = ((response[offset] & 0b00111111) << 8) | response[offset + 1] #remove the first 2 bits and get the 14 bits representing the offset
-                while response[address] != 0b0:
-                    NAME.append(response[address])
-                    address += 1
-                offset += 2 # skip the 2 bytes
-            else:
-                while response[offset] != 0b0:
-                    NAME.append(response[offset])
-                    offset += 1
-                offset += 1 # skip the 0 byte
-                
-            NAME = ascii_to_readable(NAME)
-                
-            TYPE = (response[offset] << 8) | response[offset + 1] # 16 bits
+            NAME, offset = self.decode_name(response, offset)
+            TYPE = (response[offset] << 8) | response[offset + 1]
             CLASS = (response[offset + 2] << 8) | response[offset + 3]
             TTL = (response[offset + 4] << 24) | (response[offset + 5] << 16) | (response[offset + 6] << 8) | response[offset + 7]
             RDLENGTH = (response[offset + 8] << 8) | response[offset + 9]
-            RDATA = response[offset + 10: offset + 10 + RDLENGTH]
-            record = (NAME, TYPE, CLASS, TTL, RDLENGTH, RDATA)
+            RDATA = []
+            PREFERENCE = None
+            EXCHANGE = None
             
             offset += 10
+
+            if (TYPE == 0b1):
+                if (RDLENGTH != 4):
+                    print(f"ERROR   Unexpected response, the RDLENGTH {RDLENGTH} does not match the expected length for an A record")
+                RDATA = response[offset:offset + RDLENGTH]
+                offset += RDLENGTH
+
+            elif (TYPE == 0b10):
+                RDATA, offset = self.decode_name(response, offset)
             
-            if (TYPE == 0b1 and RDLENGTH != 4):
-                print(f"ERROR   Unexpected response, the RDLENGTH {RDLENGTH} does not match the expected length for an A record")
-            elif (TYPE == 0b1111):
+            elif (TYPE == 0b1111):  # MX Record
                 PREFERENCE = response[offset] << 8 | response[offset + 1]
                 offset += 2
                 
-                EXCHANGE = []
-                while response[offset] != 0b0:
-                    EXCHANGE.append(response[offset])
-                    offset += 1
-                offset += 1
-                
-                EXCHANGE = ascii_to_readable(EXCHANGE)       
-                record += (PREFERENCE, EXCHANGE)
-                
-            answers.append(record)
+                EXCHANGE, offset = self.decode_name(response, offset)
             
+            record = (NAME, TYPE, CLASS, TTL, RDLENGTH, RDATA, PREFERENCE, EXCHANGE)
+            answers.append(record)
+
         return answers, offset
     
+    
+    def decode_name(self, response, offset):
+        NAME = bytearray()  # Use bytearray to collect the byte labels
+        jumped = False
+        original_offset = offset
+
+        while response[offset] != 0b0:
+            if (response[offset] & 0b11000000) == 0b11000000:
+                # Compressed name
+                pointer = ((response[offset] & 0b00111111) << 8) | response[offset + 1]
+                if not jumped:
+                    original_offset = offset + 2  # Save the original offset to return after jumping
+                offset = pointer  # Jump to the pointer's address
+                jumped = True
+            else:
+                # Non-compressed name
+                label_length = response[offset]
+                NAME.extend(response[offset: offset + label_length + 1])  # Collect the label and its length
+                offset += label_length + 1
+
+        # If we jumped, return to the original offset
+        if jumped:
+            offset = original_offset
+        else:
+            offset += 1  # Skip the null byte
+
+        return ascii_to_readable(NAME), offset
+
     def display_response(self, AA, COUNT, data, section_name):
         print(f"*** {section_name} Section ({COUNT} records) ***")
         for record in data:
