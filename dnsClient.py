@@ -5,52 +5,75 @@ import socket
 import time
 import random
 
-
-def create_header():
-    ID = random.randint(0, 65535) # Generate a random 16-bit number for the ID field
-    QR = 0 # 1 bit
-    OPCODE = 0 # 4 bits
-    AA = 0 # 1 bit
-    TC = 0 # 1 bit
-    RD = 1 # 1 bit
-    RA = 0 # 1 bit
-    Z = 0 # 3 bits
-    RCODE = 0 # 4 bits
+class QueryConstructor:
     
-    flags = (QR << 15) | (OPCODE << 11) | (AA << 10) | (TC << 9) | (RD << 8) | (RA << 7) | (Z << 4) | RCODE # 16 bits
-    
-    QDCOUNT = 1 # 16 bits
-    ANCOUNT = 0 # 16 bits
-    NSCOUNT = 0 # 16 bits
-    ARCOUNT = 0 # 16 bits
-    
-    header = struct.pack(">HHHHHH", ID, flags, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT) # 12 bytes
-    return header, ID, RD
-    
-def create_question(domaine_name, query_type):
-    question = b''
-    QNAME = []
-    domaine_name_list = domaine_name.split(".")
-    
-    for label in domaine_name_list:
-        question += struct.pack(">B", len(label))
-        QNAME.append(len(label))
-        for char in label:
-            question += char.encode('ascii')
-            QNAME.append(ord(char))
-    question += struct.pack(">B", 0) # end of domain name
-    
-    QTYPE = 1 # 16 bits, A record by default
-    QCLASS = 1 # 16 bits, IN class by default
-    
-    if query_type == "-mx":
-        QTYPE = 15
-    elif query_type == "-ns":
-        QTYPE = 2
-    
-    question += struct.pack(">HH", QTYPE, QCLASS) # 4 bytes
-    return question, QNAME, QTYPE, QCLASS
+    def __init__(self, domaine_name, query_type):
+        self.name = domaine_name
+        self.query_type = query_type
+        self.ID = None
+        self.QR = None
+        QNAME = None
+        QTYPE = None
+        QCLASS = None
         
+    def create_header(self):
+        self.ID = random.randint(0, 65535) # Generate a random 16-bit number for the ID field
+        
+        self.QR = 0b0 # 1 bit
+        OPCODE = 0b0 # 4 bits
+        AA = 0b0 # 1 bit
+        TC = 0b0 # 1 bit
+        RD = 0b1 # 1 bit
+        RA = 0b0 # 1 bit
+        Z = 0b0 # 3 bits
+        RCODE = 0b0 # 4 bits
+        flags = (self.QR << 15) | (OPCODE << 11) | (AA << 10) | (TC << 9) | (RD << 8) | (RA << 7) | (Z << 4) | RCODE # 16 bits
+        
+        QDCOUNT = 0b1 # 16 bits
+        ANCOUNT = 0b0 # 16 bits
+        NSCOUNT = 0b0 # 16 bits
+        ARCOUNT = 0b0 # 16 bits
+        
+        header = b''
+        header += struct.pack(">HHHHHH", self.ID, flags, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT)
+        
+        return header
+    
+    def create_question(self, domaine_name, query_type):
+        domaine_name_list = domaine_name.split(".")
+        question = b''
+        QNAME = []
+        
+        for label in domaine_name_list:
+            question += struct.pack(">B", len(label))
+            QNAME.append(len(label))
+            for char in label:
+                question += char.encode('ascii')
+                QNAME.append(char.encode('ascii'))
+        question += struct.pack(">B", 0) # end of domain name
+        
+        self.QNAME = QNAME
+        self.QTYPE = 15 if query_type == "-mx" else 2 if query_type == "-ns" else 1  # 16 bits
+        self.QCLASS = 1 # 16 bits
+        
+        question += struct.pack(">HH", self.QTYPE, self.QCLASS)
+        
+        return question
+    
+    def create_query(self):
+        header = self.create_header()
+        question = self.create_question(self.name, self.query_type)
+        return header + question
+    
+class QueryHandler:
+    
+    def send_query(self, timeout, max_retries, port, server, query):
+        
+    
+    
+    
+    
+    
     
 def query_server(timeout, max_retries, port, server, query):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -74,7 +97,7 @@ def query_server(timeout, max_retries, port, server, query):
 
 def parse_header(query_ID, query_RD, response):
     
-    ID, flags, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT = struct.unpack(">HHHHHH", response[:12])
+    ID, flags, QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT = struct.unpack(">HHHHHH", response[:12]) # TODO: NOT TO USE UNPACK
     
     if ID != query_ID:
         print(f"Error    Unexpected response, the response ID {ID} does not match the query ID {query_ID}")
@@ -114,7 +137,7 @@ def parse_header(query_ID, query_RD, response):
 
 def parse_question(query_QNAME, query_QTYPE, query_QCLASS, response):
     offset = 12 # start after the header (12 bytes)
-    QNAME = []
+    QNAME = [] 
     
     while response[offset] != 0:
         QNAME.append(response[offset])
@@ -122,8 +145,8 @@ def parse_question(query_QNAME, query_QTYPE, query_QCLASS, response):
         
     offset += 1 # skip the 0 byte
     
-    QTYPES = struct.unpack_from(">H", response, offset)[0]
-    QCLASS = struct.unpack_from(">H", response, offset + 2)[0]
+    QTYPES = struct.unpack_from(">H", response, offset)[0] #todo do not use unpack
+    QCLASS = struct.unpack_from(">H", response, offset + 2)[0] # todo do not use unpack
     
     offset += 4
     
@@ -167,7 +190,7 @@ def parse_answer(response, offset, COUNT):
             print(f"ERROR   Unexpected response, the RDLENGTH {RDLENGTH} does not match the expected length for an A record")
         elif (TYPE == 15):
             PREFERENCE = struct.unpack_from(">H", response, offset + 10)[0]
-            EXCHANGE = []
+            EXCHANGE = [] 
             exchange_offset  = offset + 12
             if response[exchange_offset] & 0b11000000:
                 pointer = struct.unpack_from(">H", response, exchange_offset)[0] & 0b0011111111111111
@@ -197,22 +220,22 @@ def print_response(AA, COUNT, data, section_name):
         # A record
         if TYPE == 1:
             ip_address = ".".join(map(str, RDATA))
-            print(f"IP  {ip_address}    {TTL}   {auth}")
+            print(f"IP\t{ip_address}\t{TTL}\t{auth}")
                 
         # NS Record
         elif TYPE == 2:
             name_server = get_readable_domaine_name(RDATA)
-            print(f"NS  {name_server}   {TTL}   {auth}")
+            print(f"NS\t{name_server}\t{TTL}\t{auth}")
             
         # CNAME record
         elif TYPE == 5:
             alias = get_readable_domaine_name(RDATA)
-            print(f"CNAME   {alias} {TTL}   {auth}")
+            print(f"CNAME\t{alias}\t{TTL}\t{auth}")
         
         # MX record
         elif TYPE == 15:
             preference = record[5]
-            exchange = get_readable_domaine_name(record[6])
+            exchange = record[6]
             print(f"MX  {exchange}  {preference}    {TTL}   {auth}")
 
 def get_readable_domaine_name(data):
@@ -238,6 +261,7 @@ def parse_response(query_ID, query_RD, query_QNAME, query_QTYPE, query_QCLASS, r
     additionals, offset_additionals = parse_answer(response, offset_authorities, ARCOUNT) # reuse the parse_answer function to parse the additionals
     
     print_response(AA, ANCOUNT, answers, "Answer")
+    
     print_response(AA, ARCOUNT, additionals, "Additional")
     
 
@@ -262,20 +286,16 @@ def main():
         elif args[i] == "-p":
             port = int(args[i+1])
             i += 2
-        elif args[i] == "-mx":
-            query_type = "-mx"
+        elif args[i] == "-mx" or args[i] == "-ns":
+            query_type = args[i]
             i += 1
-        elif args[i] == "-ns":
-            query_type = "-ns"
-            i += 1
-        elif args[i][0] == "@":
-            server = args[i][1:] # remove the @ symbol, keep the server IP address
+        elif args[i].startswith("@"):
+            server = args[i][1:]
+            if (i + 1 >= len(args)):
+                print("ERROR    Incorrect input syntax: the domain name must be specified after the server name")
+                exit(1)
             name = args[i+1] # domain name
             i += 2
-            
-            if (i < len(args)):
-                print("ERROR    Incorrect input syntax: the server name must be the last specified arguments")
-                exit(1)
         else:
             print(f"ERROR    Incorrect input syntax: program argument {args[i]} is not recognized")
             exit(1)
@@ -288,19 +308,17 @@ def main():
     print(f"Server: {server}")
     print(f"Request type: {query_type}")
     
-    # create query
-    header, ID, RD = create_header()
-    question, QNAME, QTYPE, QCLASS = create_question(name, query_type)
-    query = header + question
     
-    # send query to server
-    response, elapsed_time, retry_count = query_server(timeout, max_retries, port, server, query)
+    queryConstructor = QueryConstructor(name, query_type)
+    dnsQuery = queryConstructor.create_query()
+    
+    queryHandler = QueryHandler()
+    response, elapsed_time, retry_count = queryHandler.send_query(timeout, max_retries, port, server, dnsQuery)
     
     print(f"Response received after {elapsed_time} seconds ({retry_count} retries)")
     
-    
-    # parse response
-    parse_response(ID, RD, QNAME, QTYPE, QCLASS, response)
+    queryHandler.process_response(queryConstructor.ID, queryConstructor.RD, queryConstructor.QNAME, queryConstructor.QTYPE, queryConstructor.QCLASS, response)
+
 
               
 if __name__ == "__main__":
