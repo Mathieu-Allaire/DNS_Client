@@ -171,26 +171,25 @@ class QueryHandler:
             
             offset += 10
 
-            if (TYPE == 0b1):
-                if (RDLENGTH != 4):
+            if TYPE == 0b1:
+                if RDLENGTH != 4:
                     print(f"ERROR   Unexpected response, the RDLENGTH {RDLENGTH} does not match the expected length for an A record")
                 RDATA = response[offset:offset + RDLENGTH]
                 offset += RDLENGTH
 
-            elif (TYPE == 0b10):
+            elif TYPE == 0b10:
                 RDATA, offset = self.decode_name(response, offset)
-            
-            elif (TYPE == 0b1111):  # MX Record
+            elif TYPE == 0b101:
+                RDATA, offset = self.decode_name(response, offset)
+            elif TYPE == 0b1111:
                 PREFERENCE = response[offset] << 8 | response[offset + 1]
                 offset += 2
-                
                 EXCHANGE, offset = self.decode_name(response, offset)
             
             record = (NAME, TYPE, CLASS, TTL, RDLENGTH, RDATA, PREFERENCE, EXCHANGE)
             answers.append(record)
 
         return answers, offset
-    
     
     def decode_name(self, response, offset):
         NAME = bytearray()  # Use bytearray to collect the byte labels
@@ -222,7 +221,7 @@ class QueryHandler:
     def display_response(self, AA, COUNT, data, section_name):
         print(f"*** {section_name} Section ({COUNT} records) ***")
         for record in data:
-            NAME, TYPE, CLASS, TTL, RDLENGTH, RDATA = record[:6]
+            NAME, TYPE, CLASS, TTL, RDLENGTH, RDATA, PREFERENCE, EXCHANGE = record
             auth = "auth" if AA else "nonauth"
             
             # A record
@@ -239,10 +238,8 @@ class QueryHandler:
                 
             # MX record
             elif TYPE == 0b1111:
-                print(f"MX\t{record[7]}\t{record[6]}\t{TTL}\t{auth}")
+                print(f"MX\t{PREFERENCE}\t{EXCHANGE}\t{TTL}\t{auth}")
             
-            
-        
     def process_response(self, query_ID, query_RD, query_QNAME, query_QTYPE, query_QCLASS, response):
         self.parse_header(query_ID, query_RD, response)
         offset = self.parse_question(query_QNAME, query_QTYPE, query_QCLASS, response)
@@ -251,7 +248,9 @@ class QueryHandler:
         self.additionals, offset = self.parse_answer(self.ARCOUNT, offset, response)
         
         self.display_response(self.AA, self.ANCOUNT, self.answers, "Answer")
-        self.display_response(self.AA, self.ARCOUNT, self.additionals, "Additional")
+        
+        if self.ARCOUNT > 0:
+            self.display_response(self.AA, self.ARCOUNT, self.additionals, "Additional")
         
 def ascii_to_readable(data):
     name = ""
