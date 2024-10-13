@@ -148,7 +148,7 @@ class QueryHandler:
         offset += 4
         
         if query_QNAME != QNAME:
-            print(f"Error  fwehfieuwfviewyfeiewuifgwei  Unexpected response, the QNAME {QNAME} does not match the query QNAME {query_QNAME}")
+            print(f"Error   Unexpected response, the QNAME {QNAME} does not match the query QNAME {query_QNAME}")
         elif query_QTYPE != QTYPES:
             print(f"Error    Unexpected response, the QTYPE {QTYPES} does not match the query QTYPE {query_QTYPE}")
         elif query_QCLASS != QCLASS:
@@ -176,7 +176,6 @@ class QueryHandler:
                     print(f"ERROR   Unexpected response, the RDLENGTH {RDLENGTH} does not match the expected length for an A record")
                 RDATA = response[offset:offset + RDLENGTH]
                 offset += RDLENGTH
-
             elif TYPE == 0b10:
                 RDATA, offset = self.decode_name(response, offset)
             elif TYPE == 0b101:
@@ -277,7 +276,7 @@ def main():
     i = 0
     while (i < len(args)):
         if args[i] == "-t":
-            timeout = int(args[i+1])
+            timeout = float(args[i+1])
             i += 2
         elif args[i] == "-r":
             max_retries = int(args[i+1])
@@ -312,8 +311,11 @@ def main():
     dnsQuery = queryConstructor.create_query()
     
     queryHandler = QueryHandler()
-    response, elapsed_time, retry_count = queryHandler.query_server(timeout, max_retries, port, server, dnsQuery)
-    
+    result = queryHandler.query_server(timeout, max_retries, port, server, dnsQuery)
+    if result is None:
+        exit(1)
+    response, elapsed_time, retry_count = result
+
     print(f"Response received after {elapsed_time} seconds ({retry_count} retries)")
     
     queryHandler.process_response(queryConstructor.ID, queryConstructor.RD, queryConstructor.QNAME, queryConstructor.QTYPE, queryConstructor.QCLASS, response)
