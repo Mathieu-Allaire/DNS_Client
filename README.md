@@ -6,7 +6,7 @@ This DNS client is implemented in Python using socket programming. It allows to 
 
 To run the DNS client, use the following command:
 
-```bash
+```
 python dnsClient.py [-t timeout] [-r max-retries] [-p port] [-mx | -ns] @server name
 ```
 where the arguments are defined as follows:
