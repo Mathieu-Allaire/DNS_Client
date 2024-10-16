@@ -4,6 +4,15 @@ import socket
 import time
 import random
 
+"""
+Contributors:
+    Jatin Patel 261114558
+    Mathieu Allaire 261119004
+"""
+
+"""
+The QueryConstructor class is used to create a DNS query message.
+"""
 class QueryConstructor:
     
     def __init__(self, domaine_name, query_type):
@@ -14,7 +23,14 @@ class QueryConstructor:
         self.QNAME = None
         self.QTYPE = None
         self.QCLASS = None
-        
+    
+    """
+    Create the header of the DNS query message.
+    Input:
+        None
+    Output:
+        header - the header section of the DNS query message
+    """
     def create_header(self):
         self.ID = random.randint(0, (1 << 16) - 1) # Generate a random 16-bit number for the ID field
         
@@ -38,6 +54,14 @@ class QueryConstructor:
         
         return header
     
+    """
+    Create the question section of the DNS query message.
+    Input:
+        domaine_name - the domain name
+        query_type - the query type
+    Output:
+        question - the question section of the DNS query message
+    """
     def create_question(self, domaine_name, query_type):
         self.QNAME = domaine_name
         domaine_name_list = domaine_name.split(".")
@@ -56,11 +80,21 @@ class QueryConstructor:
         
         return question
     
+    """
+    Wrapper function to create the DNS query message.
+    Input:
+        None
+    Output:
+        query - the DNS query message
+    """
     def create_query(self):
         header = self.create_header()
         question = self.create_question(self.name, self.query_type)
         return header + question
-    
+
+"""
+The QueryHandler class is used to send the DNS query message to the server and process the response.
+"""
 class QueryHandler:
     
     def __init__(self):
@@ -73,6 +107,19 @@ class QueryHandler:
         self.authorities = None
         self.additionals = None
     
+    """
+    Send the DNS query message to the server and receive the response.
+    Input: 
+        timeout - the time to wait for a response
+        max_retries - the maximum number of retries
+        port - the port number of the server
+        server - the server name
+        query - the DNS query message
+    Output:
+        response - the DNS response message
+        elapsed_time - the time taken to receive the response
+        retry_count - the number of retries
+    """
     def query_server(self, timeout, max_retries, port, server, query):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(timeout)
@@ -96,6 +143,15 @@ class QueryHandler:
         sock.close()
         return None
     
+    """
+    Parse the header of the DNS response message.
+    Input:
+        query_ID - the ID of the query message
+        query_RD - the RD flag of the query message
+        response - the DNS response message
+    Output:
+        None
+    """
     def parse_header(self, query_ID, query_RD, response):
         ID = (response[0] << 8) | response[1] 
         flags = (response[2] << 8) | response[3]
@@ -137,7 +193,17 @@ class QueryHandler:
                 print("Error    Unexpected response: the name server does not support the requested query")
             elif RCODE == 5:
                 print("Error    Unexpected response: the name server refused to process the query")
-                
+    
+    """
+    Parse the question section of the DNS response message.
+    Input:
+        query_QNAME - the QNAME of the query message
+        query_QTYPE - the QTYPE of the query message
+        query_QCLASS - the QCLASS of the query message
+        response - the DNS response message
+    Output:
+        offset - the offset to the next section of the response message
+    """      
     def parse_question(self, query_QNAME, query_QTYPE, query_QCLASS, response):
         offset = 12 # start after the header (12 bytes)
     
@@ -156,6 +222,16 @@ class QueryHandler:
         
         return offset
     
+    """
+    Parse the answer, authority, and additional sections of the DNS response message.
+    Input:
+        COUNT - the number of records in the section
+        offset - the offset to the section
+        response - the DNS response message
+    Output:
+        data - the records in the section
+        offset - the offset to the next section
+    """
     def parse_answer(self, COUNT, offset, response):
         answers = []
 
@@ -190,33 +266,51 @@ class QueryHandler:
 
         return answers, offset
     
+    """
+    Handle the decoding of the domain name in the DNS response message.
+    Input:
+        response - the DNS response message
+        offset - the offset to the domain name
+    Output:
+        NAME - the domain name
+        offset - the offset past the domain name
+    """
     def decode_name(self, response, offset):
-        NAME = bytearray()  # Use bytearray to collect the byte labels
-        jumped = False
-        original_offset = offset
+        NAME = ""
+        compression = False
+        offset_with_compression = None
 
         while response[offset] != 0b0:
             if (response[offset] & 0b11000000) == 0b11000000:
-                # Compressed name
                 pointer = ((response[offset] & 0b00111111) << 8) | response[offset + 1]
-                if not jumped:
-                    original_offset = offset + 2  # Save the original offset to return after jumping
-                offset = pointer  # Jump to the pointer's address
-                jumped = True
+                if not compression:
+                    offset_with_compression = offset + 2  # Save offset
+                offset = pointer
+                compression = True
             else:
-                # Non-compressed name
                 label_length = response[offset]
-                NAME.extend(response[offset: offset + label_length + 1])  # Collect the label and its length
-                offset += label_length + 1
+                offset += 1
+                for i in range(label_length):
+                    NAME += chr(response[offset + i])
+                NAME += '.'
+                offset += label_length
 
-        # If we jumped, return to the original offset
-        if jumped:
-            offset = original_offset
-        else:
-            offset += 1  # Skip the null byte
+        offset += 1  # Skip the null byte at the end of the name
+        if compression:
+            offset = offset_with_compression
 
-        return ascii_to_readable(NAME), offset
+        return NAME[:-1], offset  # Remove ending dot
 
+    """
+    Output the response message.
+    Input:
+        AA - the AA flag
+        COUNT - the number of records in the section
+        data - the records in the section
+        section_name - the name of the section
+    Output:
+        None
+    """
     def display_response(self, AA, COUNT, data, section_name):
         print(f"*** {section_name} Section ({COUNT} records) ***")
         for record in data:
@@ -238,7 +332,19 @@ class QueryHandler:
             # MX record
             elif TYPE == 0b1111:
                 print(f"MX\t{PREFERENCE}\t{EXCHANGE}\t{TTL}\t{auth}")
-            
+    
+    """
+    Wrapper function to process the DNS response message.
+    Input:
+        query_ID - the ID of the query message
+        query_RD - the RD flag of the query message
+        query_QNAME - the QNAME of the query message
+        query_QTYPE - the QTYPE of the query message
+        query_QCLASS - the QCLASS of the query message
+        response - the DNS response message
+    Output:
+        None
+    """    
     def process_response(self, query_ID, query_RD, query_QNAME, query_QTYPE, query_QCLASS, response):
         self.parse_header(query_ID, query_RD, response)
         offset = self.parse_question(query_QNAME, query_QTYPE, query_QCLASS, response)
@@ -250,7 +356,14 @@ class QueryHandler:
         
         if self.ARCOUNT > 0:
             self.display_response(self.AA, self.ARCOUNT, self.additionals, "Additional")
-        
+
+"""
+Convert the ASCII domain name to a readable format.
+Input:
+    data - the ASCII domain name
+Output:
+    name - the readable domain name
+"""
 def ascii_to_readable(data):
     name = ""
     offset = 0
